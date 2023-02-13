@@ -16,32 +16,6 @@ fatal()
   exit 1
 }
 
-function build_pyrsia() {
-    echo "Build PYRSIA"
-    cd ${PYRSIA_HOME}
-    cargo build --workspace
-}
-
-function build_pipeline() {
-    echo "Build pyrsia build pipeline"
-    cd ${PYRSIA_BUILD_PIPELINE_HOME}
-    cargo build
-}
-
-
-function setup {
-    if [[ -d $TEST_DIR ]]
-    then
-        rm -rf $TEST_DIR
-    fi
-    for node in nodeA nodeB nodeC nodeD
-    do
-        local dir=${TEST_DIR}/${node}
-        mkdir -p $dir || fatal "Could not create directory: \"${dir}\""
-        cp ${PYRSIA_HOME}/target/debug/pyrsia_node ${TEST_DIR}/${node}
-    done
-}
-
 function start_build_pipeline() {
     echo "Starting pyrsia build pipeline process"
     cd $PYRSIA_BUILD_PIPELINE_HOME
@@ -116,20 +90,40 @@ function list_started_processes() {
     ps -u -q $pidlist
 }
 
+function setup_environment {
+    echo "Build pyrsia workspace"
+    cd ${PYRSIA_HOME}
+    cargo build --workspace
+
+    echo "Build pyrsia pipeline"
+    cd ${PYRSIA_BUILD_PIPELINE_HOME}
+    cargo build
+
+    if [[ -d $TEST_DIR ]]
+    then
+        rm -rf $TEST_DIR
+    fi
+    for node in nodeA nodeB nodeC nodeD
+    do
+        local dir=${TEST_DIR}/${node}
+        mkdir -p $dir || fatal "Could not create directory: \"${dir}\""
+        cp ${PYRSIA_HOME}/target/debug/pyrsia_node ${TEST_DIR}/${node}
+    done
+
+    start_build_pipeline
+    start_nodeA "http://localhost:8080" 7881
+    start_nodeB "http://localhost:7881/status" "http://localhost:8080" 7882
+    start_regular_node nodeC "http://localhost:7881/status" 7883
+    start_regular_node nodeD "http://localhost:7882/status" 7884
+
+    list_started_processes
+}
+
 cd $PYRSIA_HOME
 
 #set -x
 #set -e
 
-#start up pyrsia nodes
-build_pipeline
-build_pyrsia
-setup
-start_build_pipeline
-start_nodeA "http://localhost:8080" 7881
-start_nodeB "http://localhost:7881/status" "http://localhost:8080" 7882
-start_regular_node nodeC "http://localhost:7881/status" 7883
-start_regular_node nodeD "http://localhost:7882/status" 7884
+setup_environment
 
-list_started_processes
 clear
