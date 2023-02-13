@@ -6,10 +6,6 @@ echo "# Integration test including multiple authorized nodes"
 echo "#"
 echo "#######################################################"
 
-PYRSIA_HOME=${1}
-PYRSIA_BUILD_PIPELINE_HOME=${2}
-TEST_DIR=/tmp/pyrsia-manual-tests
-
 fatal()
 {
   echo "fatal: $1" 1>&2
@@ -111,19 +107,37 @@ function setup_environment {
     done
 
     start_build_pipeline
+    sleep 5
     start_nodeA "http://localhost:8080" 7881
+    sleep 5
     start_nodeB "http://localhost:7881/status" "http://localhost:8080" 7882
-    start_regular_node nodeC "http://localhost:7881/status" 7883
-    start_regular_node nodeD "http://localhost:7882/status" 7884
+    sleep 5
+#    start_regular_node nodeC "http://localhost:7881/status" 7883
+#    start_regular_node nodeD "http://localhost:7882/status" 7884
 
     list_started_processes
 }
 
-cd $PYRSIA_HOME
+set -x
+set -e
 
-#set -x
-#set -e
+PYRSIA_HOME=${1}
+PYRSIA_BUILD_PIPELINE_HOME=${2}
+TEST_DIR=/tmp/pyrsia-manual-tests
 
 setup_environment
+
+# set up the authorized nodes:
+cd $PYRSIA_HOME
+NODE_A_PEER_ID=`curl -s http://localhost:7881/status | jq -r .peer_id`
+NODE_B_PEER_ID=`curl -s http://localhost:7882/status | jq -r .peer_id`
+echo "NODE_A_PEER_ID=$NODE_A_PEER_ID"
+echo "NODE_B_PEER_ID=$NODE_B_PEER_ID"
+./target/debug/pyrsia config -e --port 7881
+sleep 1
+./target/debug/pyrsia authorize --peer $NODE_A_PEER_ID
+sleep 3
+./target/debug/pyrsia authorize --peer $NODE_B_PEER_ID
+sleep 3
 
 clear
