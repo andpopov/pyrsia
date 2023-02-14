@@ -130,7 +130,6 @@ function setup_environment {
     done
 
     start_build_pipeline
-    sleep 5
 
     start_nodeA "http://localhost:8080" 7881
     wait_status_ok 7881
