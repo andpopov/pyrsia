@@ -86,6 +86,29 @@ function list_started_processes() {
     ps -u -q $pidlist
 }
 
+function wait_status_ok() {
+    local PORT=$1
+    local MAX_WAITING_TIME=2
+    
+    while [ $MAX_WAITING_TIME -ne 0 ]
+    do
+        local PEER_ID=`curl -s http://localhost:${PORT}/status | jq -r .peer_id`
+        if [ -z "$PEER_ID" ]
+        then
+            sleep 1
+            ((MAX_WAITING_TIME-=1))
+        else
+            echo "PEER_ID=$PEER_ID"
+            break
+        fi
+    done
+
+    if [ $MAX_WAITING_TIME -eq 0 ]
+    then
+        fatal "Port ${PORT} is not reachable"
+    fi
+}
+
 function setup_environment {
     echo "Build pyrsia workspace"
     cd ${PYRSIA_HOME}
@@ -108,17 +131,23 @@ function setup_environment {
 
     start_build_pipeline
     sleep 5
+
     start_nodeA "http://localhost:8080" 7881
-    sleep 5
+    wait_status_ok 7881
+
     start_nodeB "http://localhost:7881/status" "http://localhost:8080" 7882
-    sleep 5
-#    start_regular_node nodeC "http://localhost:7881/status" 7883
-#    start_regular_node nodeD "http://localhost:7882/status" 7884
+    wait_status_ok 7882    
+
+    start_regular_node nodeC "http://localhost:7881/status" 7883
+    wait_status_ok 7883
+
+    start_regular_node nodeD "http://localhost:7882/status" 7884
+    wait_status_ok 7884
 
     list_started_processes
 }
 
-set -x
+#set -x
 set -e
 
 PYRSIA_HOME=${1}
@@ -127,6 +156,8 @@ TEST_DIR=/tmp/pyrsia-manual-tests
 
 setup_environment
 
+# clear
+# exit 0
 # set up the authorized nodes:
 cd $PYRSIA_HOME
 NODE_A_PEER_ID=`curl -s http://localhost:7881/status | jq -r .peer_id`
@@ -134,7 +165,7 @@ NODE_B_PEER_ID=`curl -s http://localhost:7882/status | jq -r .peer_id`
 echo "NODE_A_PEER_ID=$NODE_A_PEER_ID"
 echo "NODE_B_PEER_ID=$NODE_B_PEER_ID"
 ./target/debug/pyrsia config -e --port 7881
-sleep 1
+sleep 3
 ./target/debug/pyrsia authorize --peer $NODE_A_PEER_ID
 sleep 3
 ./target/debug/pyrsia authorize --peer $NODE_B_PEER_ID
