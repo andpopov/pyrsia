@@ -164,10 +164,10 @@ NODE_B_PEER_ID=`curl -s http://localhost:7882/status | jq -r .peer_id`
 echo "NODE_A_PEER_ID=$NODE_A_PEER_ID"
 echo "NODE_B_PEER_ID=$NODE_B_PEER_ID"
 ./target/debug/pyrsia config -e --port 7881
-sleep 3
+#sleep 3
 ./target/debug/pyrsia authorize --peer $NODE_A_PEER_ID
-sleep 3
+#sleep 3
 ./target/debug/pyrsia authorize --peer $NODE_B_PEER_ID
-sleep 3
+#sleep 3
 
 clear
