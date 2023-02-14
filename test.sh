@@ -6,6 +6,12 @@ echo "# Integration test including multiple authorized nodes"
 echo "#"
 echo "#######################################################"
 
+if [ $# -ne 2 ] 
+then
+    echo "Usage: `basename $0` pyrsia_home pyrsia_build_pipeline_home"
+    exit 1
+fi
+
 fatal()
 {
   echo "fatal: $1" 1>&2
@@ -164,10 +170,16 @@ NODE_B_PEER_ID=`curl -s http://localhost:7882/status | jq -r .peer_id`
 echo "NODE_A_PEER_ID=$NODE_A_PEER_ID"
 echo "NODE_B_PEER_ID=$NODE_B_PEER_ID"
 ./target/debug/pyrsia config -e --port 7881
-#sleep 3
+sleep 3
 ./target/debug/pyrsia authorize --peer $NODE_A_PEER_ID
-#sleep 3
+sleep 3
 ./target/debug/pyrsia authorize --peer $NODE_B_PEER_ID
-#sleep 3
+sleep 3
+
+#Trigger a build from node A:
+./target/debug/pyrsia config -e --port 7881
+sleep 3
+./target/debug/pyrsia build docker --image alpine:3.16.0
+sleep
 
 clear
