@@ -227,12 +227,24 @@ TEST_DIR=/tmp/pyrsia-manual-tests
     ./target/debug/pyrsia config -e --port 7881
 
     sleep $SLEEP_DURATION
-    ./target/debug/pyrsia authorize --peer $NODE_A_PEER_ID
+    text=$(./target/debug/pyrsia authorize --peer $NODE_A_PEER_ID)
+    echo $text
+    if  [[ $text =~ 'Authorize request successfully handled' ]]; then
+        echo
+    else
+        fatal "Cannot authorize peer $NODE_A_PEER_ID"
+    fi
 
     sleep $SLEEP_DURATION
-    ./target/debug/pyrsia authorize --peer $NODE_B_PEER_ID
+    text=$(./target/debug/pyrsia authorize --peer $NODE_B_PEER_ID)
+    echo $text
+    if  [[ $text =~ 'Authorize request successfully handled' ]]; then
+        echo
+    else
+        fatal "Cannot authorize peer $NODE_B_PEER_ID"
+    fi
 
-    echo "nodeA and nodeB are authorized"
+    echo "nodeA and nodeB are authorized successfully"
 
     footer "STEP 1 - Done"
 }
