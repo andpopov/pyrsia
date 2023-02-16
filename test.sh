@@ -271,4 +271,38 @@ TEST_DIR=/tmp/pyrsia-manual-tests
     footer "STEP 2 - Done"
 }
 
-kill_processes
+{
+    echo
+    header "STEP 3 (Wait for the build to finish and check logs on all nodes)"
+
+    for port in 7881 7882 7883 7884
+    do
+        ./target/debug/pyrsia config -e --port ${port}
+        sleep 3
+
+        time_counter=$MAX_WAITING_TIME
+    
+        while [ $time_counter -ne 0 ]
+        do
+            text=$(./target/debug/pyrsia inspect-log docker --image alpine:3.16.0)
+            if  [[ $text =~ 'artifact_hash' ]]; then
+                break
+            else
+                sleep 1
+                ((time_counter-=1))
+            fi
+        done
+
+        if [ $time_counter -eq 0 ]
+        then
+            fatal "Cannot find artifact info on node by port ${port}"
+        fi
+
+        echo "Log contains artifact info on node by port ${port}"
+    done
+
+    footer "STEP 3 - Done"
+}
+
+#sleep 30
+#kill_processes
