@@ -97,7 +97,7 @@ function wait_message_in_log() {
     
     while [ $time_counter -ne 0 ]
     do
-        if grep -q "INFO" $log_file
+        if grep -q "${message}" $log_file
         then
             break
         else
@@ -298,11 +298,28 @@ TEST_DIR=/tmp/pyrsia-manual-tests
             fatal "Cannot find artifact info on node by port ${port}"
         fi
 
-        echo "Log contains artifact info on node by port ${port}"
+        echo "The transparency log contains artifact info on node by port ${port}"
     done
 
     footer "STEP 3 - Done"
 }
 
-#sleep 30
-#kill_processes
+{
+    echo
+    header "STEP 4 (check if the artifacts itself are accessible on all nodes)"
+
+    for port in 7881 7882 7883 7884
+    do
+        url=http://0.0.0.0:${port}/v2/library/alpine/manifests/3.16.0
+        text=$(curl $url)
+        if  [[ $text =~ 'errors' ]]; then
+            echo "fatal"
+            exit 1
+        fi
+        echo "Artifact is accessible on node by address ${url}"
+    done
+
+    footer "STEP 4 - Done"
+}
+
+kill_processes
