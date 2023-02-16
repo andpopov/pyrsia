@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 
+#set -x
+set -e
+
 echo "#######################################################"
 echo "#"
 echo "# Integration test including multiple authorized nodes"
 echo "#"
 echo "#######################################################"
+
+# This constants specifies maximum period of awating something and is used in functions that await some condition, for example show up message in some file
+MAX_WAITING_TIME=5
 
 if [ $# -ne 2 ] 
 then
@@ -12,19 +18,105 @@ then
     exit 1
 fi
 
+# Kills started processes
+function kill_processes() {
+    for pidfile in $TEST_DIR/*.pid; do
+        read pid <$pidfile
+        kill $pid
+    done
+}
+
+# Prints message to std error, kills started processes and exit with error code
 fatal()
 {
   echo "fatal: $1" 1>&2
+  kill_processes
   exit 1
 }
 
+# Shows listing of started processes
+function list_started_processes() {
+    local pidlist=""
+    for pidfile in $TEST_DIR/*.pid; do
+        read pid <$pidfile
+        if [ ! -z "$pidlist" ] ; then 
+            pidlist="$pidlist,"; 
+        fi
+        pidlist="$pidlist$pid";
+    done
+    echo -e "\nPyrsia processes:"
+    ps -u -q $pidlist
+}
+
+# Waits period of time until the peer's http status json-response contains peer_id
+# Function params:
+#   1) http port of peer
+function wait_status_ok() {
+    local port=$1
+    
+    local time_counter=$MAX_WAITING_TIME
+    
+    while [ $time_counter -ne 0 ]
+    do
+        local peer_id=`curl -s http://localhost:${port}/status | jq -r .peer_id`
+        if [ -z "$peer_id" ]
+        then
+            sleep 1
+            ((time_counter-=1))
+        else
+            break
+        fi
+    done
+
+    if [ $time_counter -eq 0 ]
+    then
+        fatal "Port ${port} is not reachable"
+    fi
+}
+
+# Waits period of time until text message be found in log file
+# Function params:
+#   1) Message for searching in log file
+#   2) Path to log file
+function wait_message_in_log() {
+    local message=$1
+    local log_file=$2    
+    
+    local time_counter=$MAX_WAITING_TIME
+    time_counter=2
+    
+    while [ $time_counter -ne 0 ]
+    do
+        if grep -q "INFO" $log_file
+        then
+            break
+        else
+            sleep 1
+            ((time_counter-=1))
+        fi
+    done
+
+    if [ $time_counter -eq 0 ]
+    then
+        fatal "Cannot find '${message}' in file ${log_file}"
+    fi
+}
+
+# Builds 'build pipeline' and starts one
 function start_build_pipeline() {
-    echo "Starting pyrsia build pipeline process"
+    echo "'Build pipeline' is starting ..."
+
     cd $PYRSIA_BUILD_PIPELINE_HOME
+
     local pid_file="$TEST_DIR/build_pipeline.pid"
-    (./target/debug/pyrsia_build) &
+    local output_log="$TEST_DIR/build_pipeline.log"
+    (RUST_LOG=debug cargo run &>${output_log}) &
     local pid=$!
     echo $pid >$pid_file
+
+    wait_message_in_log "INFO  actix_server::server  > Tokio runtime found; starting in existing Tokio runtime" $output_log
+
+    echo "'Build pipeline' is started sucessfully"
 }
 
 function start_nodeA() {
@@ -40,6 +132,8 @@ function start_nodeA() {
     (RUST_LOG=pyrsia=debug DEV_MODE=on ./pyrsia_node --pipeline-service-endpoint ${pipeline_service_endpoint}  --listen-only -H 0.0.0.0 -p ${port} --init-blockchain &>${output_log}) &
     local pid=$!
     echo $pid >$pid_file
+
+    wait_status_ok $port
 }
 
 function start_nodeB() {
@@ -56,6 +150,8 @@ function start_nodeB() {
     (RUST_LOG=debug ./pyrsia_node --bootstrap-url ${bootstrap_url} --pipeline-service-endpoint ${pipeline_service_endpoint} -p ${port} &>${output_log}) &
     local pid=$!
     echo $pid >$pid_file
+
+    wait_status_ok $port
 }
 
 function start_regular_node() {
@@ -70,59 +166,15 @@ function start_regular_node() {
     (RUST_LOG=debug ./pyrsia_node --bootstrap-url ${bootstrap_url} -p ${port} &>${output_log}) &
     local pid=$!
     echo $pid >$pid_file
+
+    wait_status_ok $port
 }
 
-function clear() {
-    for pidfile in $TEST_DIR/*.pid; do
-        read pid <$pidfile
-        kill $pid
-    done
-}
-
-function list_started_processes() {
-    local pidlist=""
-    for pidfile in $TEST_DIR/*.pid; do
-        read pid <$pidfile
-        if [ ! -z "$pidlist" ] ; then 
-            pidlist="$pidlist,"; 
-        fi
-        pidlist="$pidlist$pid";
-    done
-    echo -e "\nPyrsia processes:"
-    ps -u -q $pidlist
-}
-
-function wait_status_ok() {
-    local PORT=$1
-    local MAX_WAITING_TIME=2
-    
-    while [ $MAX_WAITING_TIME -ne 0 ]
-    do
-        local PEER_ID=`curl -s http://localhost:${PORT}/status | jq -r .peer_id`
-        if [ -z "$PEER_ID" ]
-        then
-            sleep 1
-            ((MAX_WAITING_TIME-=1))
-        else
-            echo "PEER_ID=$PEER_ID"
-            break
-        fi
-    done
-
-    if [ $MAX_WAITING_TIME -eq 0 ]
-    then
-        fatal "Port ${PORT} is not reachable"
-    fi
-}
-
-function setup_environment {
-    echo "Build pyrsia workspace"
+function start_nodes {
+    echo "Building of pyrsia is starting"
     cd ${PYRSIA_HOME}
     cargo build --workspace
-
-    echo "Build pyrsia pipeline"
-    cd ${PYRSIA_BUILD_PIPELINE_HOME}
-    cargo build
+    echo "Pyrsia is built successfully"
 
     if [[ -d $TEST_DIR ]]
     then
@@ -136,33 +188,20 @@ function setup_environment {
     done
 
     start_build_pipeline
-
     start_nodeA "http://localhost:8080" 7881
-    wait_status_ok 7881
-
     start_nodeB "http://localhost:7881/status" "http://localhost:8080" 7882
-    wait_status_ok 7882    
-
     start_regular_node nodeC "http://localhost:7881/status" 7883
-    wait_status_ok 7883
-
     start_regular_node nodeD "http://localhost:7882/status" 7884
-    wait_status_ok 7884
 
     list_started_processes
 }
-
-#set -x
-set -e
 
 PYRSIA_HOME=${1}
 PYRSIA_BUILD_PIPELINE_HOME=${2}
 TEST_DIR=/tmp/pyrsia-manual-tests
 
-setup_environment
+start_nodes
 
-# clear
-# exit 0
 # set up the authorized nodes:
 cd $PYRSIA_HOME
 NODE_A_PEER_ID=`curl -s http://localhost:7881/status | jq -r .peer_id`
@@ -180,6 +219,6 @@ sleep 3
 ./target/debug/pyrsia config -e --port 7881
 sleep 3
 ./target/debug/pyrsia build docker --image alpine:3.16.0
-sleep
+sleep 3
 
-clear
+kill_processes
