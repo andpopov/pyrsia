@@ -243,8 +243,18 @@ TEST_DIR=/tmp/pyrsia-manual-tests
     
     ./target/debug/pyrsia config -e --port 7881
     sleep $SLEEP_DURATION
-    ./target/debug/pyrsia build docker --image alpine:3.16.0
+    text=$(./target/debug/pyrsia build docker --image alpine:3.16.0)
+    echo "$text"
     sleep $SLEEP_DURATION
+
+    pattern="'(.*)'"
+    if  [[ $text =~ $pattern ]]; then
+        build_id=${BASH_REMATCH[1]}
+    else
+        fatal "Cannot parse Build ID in '${text}'"
+    fi
+
+    echo "BUILD ID is '${build_id}'"
 
     footer "STEP 2 - Done"
 }
