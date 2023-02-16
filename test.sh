@@ -12,11 +12,21 @@ echo "#######################################################"
 # This constants specifies maximum period of awating something and is used in functions that await some condition, for example show up message in some file
 MAX_WAITING_TIME=5
 
+SLEEP_DURATION=3
+
 if [ $# -ne 2 ] 
 then
     echo "Usage: `basename $0` pyrsia_home pyrsia_build_pipeline_home"
     exit 1
 fi
+
+header() {
+    echo "####################################################### ${1} #######################################################"
+}
+
+footer() {
+    echo "####################################################### ${1} #######################################################"
+}
 
 # Kills started processes
 function kill_processes() {
@@ -170,7 +180,14 @@ function start_regular_node() {
     wait_status_ok $port
 }
 
-function start_nodes {
+PYRSIA_HOME=${1}
+PYRSIA_BUILD_PIPELINE_HOME=${2}
+TEST_DIR=/tmp/pyrsia-manual-tests
+
+{
+    echo
+    header "STEP 0 (START NODES)"
+
     echo "Building of pyrsia is starting"
     cd ${PYRSIA_HOME}
     cargo build --workspace
@@ -182,7 +199,7 @@ function start_nodes {
     fi
     for node in nodeA nodeB nodeC nodeD
     do
-        local dir=${TEST_DIR}/${node}
+        dir=${TEST_DIR}/${node}
         mkdir -p $dir || fatal "Could not create directory: \"${dir}\""
         cp ${PYRSIA_HOME}/target/debug/pyrsia_node ${TEST_DIR}/${node}
     done
@@ -194,31 +211,42 @@ function start_nodes {
     start_regular_node nodeD "http://localhost:7882/status" 7884
 
     list_started_processes
+
+    footer "STEP 0 - DONE"
 }
 
-PYRSIA_HOME=${1}
-PYRSIA_BUILD_PIPELINE_HOME=${2}
-TEST_DIR=/tmp/pyrsia-manual-tests
+{
+    echo
+    header "STEP 1 (set up the authorized nodes)"
 
-start_nodes
+    cd $PYRSIA_HOME
+    NODE_A_PEER_ID=`curl -s http://localhost:7881/status | jq -r .peer_id`
+    NODE_B_PEER_ID=`curl -s http://localhost:7882/status | jq -r .peer_id`
+    echo "NODE_A_PEER_ID=$NODE_A_PEER_ID"
+    echo "NODE_B_PEER_ID=$NODE_B_PEER_ID"
+    ./target/debug/pyrsia config -e --port 7881
 
-# set up the authorized nodes:
-cd $PYRSIA_HOME
-NODE_A_PEER_ID=`curl -s http://localhost:7881/status | jq -r .peer_id`
-NODE_B_PEER_ID=`curl -s http://localhost:7882/status | jq -r .peer_id`
-echo "NODE_A_PEER_ID=$NODE_A_PEER_ID"
-echo "NODE_B_PEER_ID=$NODE_B_PEER_ID"
-./target/debug/pyrsia config -e --port 7881
-sleep 3
-./target/debug/pyrsia authorize --peer $NODE_A_PEER_ID
-sleep 3
-./target/debug/pyrsia authorize --peer $NODE_B_PEER_ID
-sleep 3
+    sleep $SLEEP_DURATION
+    ./target/debug/pyrsia authorize --peer $NODE_A_PEER_ID
 
-#Trigger a build from node A:
-./target/debug/pyrsia config -e --port 7881
-sleep 3
-./target/debug/pyrsia build docker --image alpine:3.16.0
-sleep 3
+    sleep $SLEEP_DURATION
+    ./target/debug/pyrsia authorize --peer $NODE_B_PEER_ID
+
+    echo "nodeA and nodeB are authorized"
+
+    footer "STEP 1 - Done"
+}
+
+{
+    echo
+    header "STEP 2 (Trigger a build from node A)"
+    
+    ./target/debug/pyrsia config -e --port 7881
+    sleep $SLEEP_DURATION
+    ./target/debug/pyrsia build docker --image alpine:3.16.0
+    sleep $SLEEP_DURATION
+
+    footer "STEP 2 - Done"
+}
 
 kill_processes
